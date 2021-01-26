@@ -10,6 +10,7 @@ VBOX=0
 DOCKER=0
 DOCKER_FILE_ONLY=0
 DOCKER_IMAGE_HASH=""
+DISABLE_APT_CACHER=0
 
 usage() {
   echo "Usage: ${0##*/} [OPTION]..."
@@ -26,6 +27,7 @@ usage() {
   --docker                  use docker instead of kvm
   --docker-file-only        produce a Dockerfile but do not build the image
   --docker-image-hash D     digest of the docker image to build from
+  --disable-apt-cacher      disable use of apt-cacher
 
   The MIRROR_HOST environment variable can be used to change the
   apt-cacher host.  It should be something that both the host and the
@@ -97,6 +99,10 @@ if [ $# != 0 ] ; then
       --docker-image-digest)
         DOCKER_IMAGE_HASH="$2"
         shift 2
+        ;;
+      --disable-apt-cacher)
+        DISABLE_APT_CACHER=1
+        shift 1
         ;;
       --*)
         echo "unrecognized option $1"
@@ -202,12 +208,17 @@ if [ $DOCKER = "1" ]; then
     base_image="$DISTRO:$SUITE"
   fi
 
+  configure_apt_cacher="RUN echo 'Acquire::http { Proxy \"$MIRROR_BASE\"; };' > /etc/apt/apt.conf.d/50cacher"
+  if [ -n "$DISABLE_APT_CACHER" ]; then
+    configure_apt_cacher=""
+  fi
+
   # Generate the dockerfile
   cat << EOF > $OUT.Dockerfile
 FROM $base_image
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN echo 'Acquire::http { Proxy "$MIRROR_BASE"; };' > /etc/apt/apt.conf.d/50cacher
+$configure_apt_cacher
 RUN apt-get update && apt-get --no-install-recommends -y install $addpkg
 
 RUN useradd -ms /bin/bash -U $DISTRO
